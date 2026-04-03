@@ -46,41 +46,52 @@ for message in st.session_state.chat_history:
 
 # 6. 聊天輸入框
 if prompt := st.chat_input("請輸入您的問題..."):
-    # 顯示使用者的訊息
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    # 顯示並存入使用者訊息 (只存一次) ---
     with st.chat_message("user"):
         st.markdown(prompt)
+    # 注意：不要在這裡 append，統一在最後處理，或只存原始 prompt
 
-    # 呼叫 Gemini 並帶入記憶
+    # 呼叫 Gemini 並帶入記憶與文件內容
     with st.chat_message("assistant"):
         try:
+            # 將知識庫放入 system_instruction
+            # 這樣 content 就會作為「背景設定」，不會重複出現在對話歷史中
             # 這裡我們使用 Gemini 的內建 ChatSession 功能
             model = genai.GenerativeModel(
                             model_name = "models/gemini-2.5-flash", 
-                            tools = [get_current_exchange_rate] # 把外部工具放進清單
+                            tools = [get_current_exchange_rate], # 把外部工具放進清單
+                            system_instruction = f"你是一個助手。參考知識：{content}"
                             )        
 
+            # 清理歷史紀錄格式
+            formatted_history = []
+            for m in st.session_state.chat_history:
+                # 確保只傳送必要的內容，避免格式錯誤
+                role = "user" if m["role"] == "user" else "model"
+                formatted_history.append({"role": role, "parts": [m["content"]]})
+            
+            # Gemini 的歷史紀錄角色名稱是 "user" 和 "model" (不是 assistant)
             # 啟動對話會話，並帶入之前的歷史紀錄
             chat = model.start_chat(
-                history=[
-                    {"role": m["role"], "parts": [m["content"]]} 
-                    for m in st.session_state.chat_history
-                    ], 
+                history = formatted_history, 
                 enable_automatic_function_calling = True # 確保工具能自動跑
                 )
             
-            # 將知識庫內容作為「系統設定」或是「第一則指令」
-            # 為了讓記憶最準確，我們每次把知識庫放在 Prompt 最前面
+            # 發送純問題，不重複發送知識庫
             # 使用 chat.send_message 發送問題，記憶才會串接
-            full_query = f"【背景知識】：{content}\n\n【使用者問題】：{prompt}"   
-            response = chat.send_message(full_query)
+            response = chat.send_message(prompt)
             
             answer = response.text
             st.markdown(answer)
             
             # 將這對對話存入歷史紀錄
+            # 存入原始的 prompt 與 answer，不含背景知識標籤
             st.session_state.chat_history.append({"role": "user", "content": prompt})
             st.session_state.chat_history.append({"role": "model", "content": answer})
+            
+            # 選做：限制歷史紀錄長度 (例如只留最近 10 組對話) 以省 token
+            # if len(st.session_state.chat_history) > 20:
+                # st.session_state.chat_history = st.session_state.chat_history[-20:]
             
         except Exception as e:
             st.error(f"發生錯誤：{e}")        
