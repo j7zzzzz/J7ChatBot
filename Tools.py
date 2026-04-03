@@ -4,9 +4,18 @@ Created on Fri Apr  3 11:59:34 2026
 
 @author: user
 """
+# =============================================================================
+# 如有新增工具，需重新啟動Streamlit App或在右上角選單選擇"Clear Cache"，否則會一直在用舊的快取。
+# =============================================================================
+# mcp_server.py
+from mcp.server.fastmcp import FastMCP
 import os
 import requests
 
+# 初始化 FastMCP 服務
+mcp = FastMCP("J7'sTools")
+
+@mcp.tool()
 def get_current_exchange_rate(base_currency: str, target_currency: str):
     """
     獲取指定貨幣之間的最新匯率。
@@ -27,3 +36,7 @@ def get_current_exchange_rate(base_currency: str, target_currency: str):
             return "暫時無法取得匯率資訊，請檢查貨幣代碼是否正確。"
     except Exception as e:
         return f"連線錯誤：{e}"
+    
+if __name__ == "__main__":
+    mcp.run() # 這是給 MCP Host 呼叫用的入口
+
