@@ -9,6 +9,7 @@ import streamlit as st
 import google.generativeai as genai
 import os
 import asyncio
+import sys
 from dotenv import load_dotenv
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -35,7 +36,7 @@ def get_cached_mcp_tools():
 async def get_mcp_tools():
 
     server_params = StdioServerParameters(
-        command = "python",
+        command = sys.executable, # 這會動態抓取當前正確的 python 路徑
         args = ["Tools.py"], # 確保 Tools.py 已經改寫成 FastMCP 版本
     )
     
