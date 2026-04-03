@@ -6,11 +6,12 @@ Created on Fri Apr  3 11:28:52 2026
 """
 
 import streamlit as st
-import google.generativeai as genai
 import os
 import asyncio
 import sys
 from dotenv import load_dotenv
+from google import genai  # 使用新版 SDK
+from google.genai import types
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -21,8 +22,10 @@ st.title("💬 J7腦的匯率查詢機器人")
 
 # 2. 載入金鑰
 load_dotenv(dotenv_path = ".env")
-api_key = os.getenv("GEMINI_API_KEY")
-genai.configure(api_key = api_key)
+client = genai.Client(
+    api_key = os.getenv("GEMINI_API_KEY"),
+    http_options = {'api_version': 'v1alpha'} # 如果要使用某些 MCP 特性，有時需指定版本
+)
 
 # 3. 定義 MCP 工具轉換函式
 @st.cache_resource
@@ -93,34 +96,43 @@ if prompt := st.chat_input("請輸入您的問題..."):
     # 呼叫 Gemini 並帶入記憶與文件內容
     with st.chat_message("assistant"):
         try:
-            # --- MCP 關鍵整合區 ---
+            # --- 1. 獲取 MCP 工具 ---
             # 因為 Streamlit 不支援直接 await，我們用 asyncio.run 執行工具獲取
             with st.spinner("正在呼叫 MCP 工具..."):
                 mcp_tools = get_cached_mcp_tools()
-                
+             
+            # --- 2. 配置工具與生成參數 ---    
+            gemini_tools = [types.Tool(function_declarations = mcp_tools)]
             # 將知識庫放入 system_instruction
             # 這樣 content 就會作為「背景設定」，不會重複出現在對話歷史中
             # 這裡我們使用 Gemini 的內建 ChatSession 功能
-            model = genai.GenerativeModel(
-                            model_name = "models/gemini-2.5-flash", 
-                            tools = [{"function_declarations": mcp_tools}], # 把外部工具放進清單
-                            system_instruction = f"你是一個助手。參考知識：{content}"
-                            )        
+            
+            config = types.GenerateContentConfig(
+                system_instruction = f"你是一個助手。參考知識：{content}",
+                tools = gemini_tools,
+                # 開啟自動執行工具的功能
+                automatic_function_calling = types.AutomaticFunctionCallingConfig(disable = False)
+            )
 
-            # 清理歷史紀錄格式
+            # --- 3. 準備歷史紀錄格式 ---
             formatted_history = []
             for m in st.session_state.chat_history:
                 # 確保只傳送必要的內容，避免格式錯誤
                 role = "user" if m["role"] == "user" else "model"
-                formatted_history.append({"role": role, "parts": [m["content"]]})
-            
-            # Gemini 的歷史紀錄角色名稱是 "user" 和 "model" (不是 assistant)
-            # 啟動對話會話，並帶入之前的歷史紀錄
-            chat = model.start_chat(
-                history = formatted_history, 
-                enable_automatic_function_calling = True # 確保工具能自動跑
+                formatted_history.append(
+                    types.Content(role = role, parts = [types.Part(text = m["content"])])
                 )
             
+            # --- 4. 啟動對話會話 ---
+            # Gemini 的歷史紀錄角色名稱是 "user" 和 "model" (不是 assistant)
+            # 啟動對話會話，並帶入之前的歷史紀錄
+            chat = client.chats.create(
+                model = "gemini-2.0-flash",
+                history = formatted_history, 
+                config = config
+                )
+            
+            # --- 5. 發送訊息並取得回應 ---
             # 發送純問題，不重複發送知識庫
             # 使用 chat.send_message 發送問題，記憶才會串接
             response = chat.send_message(prompt)
@@ -128,6 +140,7 @@ if prompt := st.chat_input("請輸入您的問題..."):
             answer = response.text
             st.markdown(answer)
             
+            # --- 6. 更新歷史紀錄 ---
             # 將這對對話存入歷史紀錄
             # 存入原始的 prompt 與 answer，不含背景知識標籤
             st.session_state.chat_history.append({"role": "user", "content": prompt})
