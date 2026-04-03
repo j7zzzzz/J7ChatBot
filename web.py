@@ -9,7 +9,6 @@ import streamlit as st
 import google.generativeai as genai
 import os
 import asyncio
-from Tools import get_current_exchange_rate
 from dotenv import load_dotenv
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
