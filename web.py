@@ -127,7 +127,7 @@ if prompt := st.chat_input("請輸入您的問題..."):
             # Gemini 的歷史紀錄角色名稱是 "user" 和 "model" (不是 assistant)
             # 啟動對話會話，並帶入之前的歷史紀錄
             chat = client.chats.create(
-                model = "gemini-2.0-flash",
+                model = "models/gemini-2.0-flash-lite",
                 history = formatted_history, 
                 config = config
                 )
